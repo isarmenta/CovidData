@@ -1,0 +1,113 @@
+--SELECT *
+--FROM awesome-flash-321715.covid_data.covid_deaths
+--WHERE continent is not null
+--order by 3,4
+
+SELECT location, date, total_cases, new_cases, total_deaths, population
+FROM awesome-flash-321715.covid_data.covid_deaths
+order by 1,2
+
+-- Looking at Total Cases vs Total Deaths
+-- Shows likelihood of dying if you contract covid in your country
+
+SELECT location, date, total_cases, total_deaths, (total_deaths/total_cases)*100 as DeathPercentage
+FROM awesome-flash-321715.covid_data.covid_deaths
+WHERE location = 'United States'
+order by 1,2
+
+-- Looking at Total Cases vs Populataion
+-- Shows what percentage of population contracted Covid
+
+SELECT location, date, total_cases, population, (total_cases/population)*100 as CasePercentage
+FROM awesome-flash-321715.covid_data.covid_deaths
+WHERE location = 'United States'
+order by 1,2
+
+-- Looking at countires with highest infection rate comapred to population
+
+SELECT location, population, MAX(total_cases) as HighestCaseCount,  MAX((total_cases)/population)*100 as PercentPopulationInfected
+FROM awesome-flash-321715.covid_data.covid_deaths
+GROUP BY location, population
+order by PercentPopulationInfected desc
+
+-- Looking at countires with highest mortality rate
+
+SELECT location, MAX(cast(total_deaths as int)) as TotalDeathCount
+FROM awesome-flash-321715.covid_data.covid_deaths
+WHERE continent is not null
+GROUP BY location 
+order by TotalDeathCount desc
+
+-- Looking at continents with highest death count per population
+
+SELECT continent, MAX(cast(total_deaths as int)) as TotalDeathCount
+FROM awesome-flash-321715.covid_data.covid_deaths
+WHERE continent is not null
+GROUP BY continent 
+order by TotalDeathCount desc
+
+-- Global Numbers - need to cast New Deaths as an integer
+SELECT date, SUM(new_cases) as total_cases, SUM (cast(new_deaths as int)) as total_deaths, SUM (cast(new_deaths as int))/SUM(new_cases)*100 as DeathPercentage
+FROM awesome-flash-321715.covid_data.covid_deaths
+WHERE continent is not null
+GROUP BY date
+order by 1,2
+
+-- Lookinh at Total Population vs Vaccinations 
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+, SUM (vac.new_vaccinations) OVER (PARTITION BY dea.location ORDER BY dea.location, dea.date) as RollingCountPeopleVaccinated
+FROM awesome-flash-321715.covid_data.covid_deaths dea
+JOIN awesome-flash-321715.covid_data.covid_vaccinations vac
+  ON dea.location = vac.location
+  and dea.date = vac.date
+WHERE dea.continent is not null
+ORDER BY 2,3
+
+--USE CTE - 
+WITH PopvsVac AS 
+(
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+, SUM(vac.new_vaccinations) OVER (PARTITION BY dea.location ORDER BY dea.location, dea.date) as RollingCountPeopleVaccinated
+FROM awesome-flash-321715.covid_data.covid_deaths dea
+JOIN awesome-flash-321715.covid_data.covid_vaccinations vac
+  ON dea.location = vac.location
+  and dea.date = vac.date
+WHERE dea.continent is not null
+--ORDER BY 2,3
+)
+SELECT *, (RollingCountPeopleVaccinated/population)*100 
+FROM PopvsVac
+
+--TEMP TABLE 
+--DROP TABLE IF EXISTS Percent_Pop_Vaccinated;
+CREATE TABLE Percent_Pop_Vaccinated (
+continent nvarchar(255), 
+location nvarchar(255), 
+date datetime, 
+population numeric, 
+new_vaccinations numeric,
+RollingCountPeopleVaccinated numeric,
+);
+
+INSERT INTO Percent_Pop_Vaccinated
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+, SUM(vac.new_vaccinations) OVER (PARTITION BY dea.location ORDER BY dea.location, dea.date) as RollingCountPeopleVaccinated
+FROM awesome-flash-321715.covid_data.covid_deaths dea
+JOIN awesome-flash-321715.covid_data.covid_vaccinations vac
+  ON dea.location = vac.location
+  and dea.date = vac.date;
+
+SELECT *, (RollingPeopleVaccinated/population)*100 
+FROM Percent_Pop_Vaccinated
+
+-- Creating view to store later for data visualizations
+
+CREATE VIEW awesome-flash-321715.covid_data.covid_deaths as
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+, SUM(vac.new_vaccinations) OVER (PARTITION BY dea.location ORDER BY dea.location, dea.date) as RollingCountPeopleVaccinated
+FROM awesome-flash-321715.covid_data.covid_deaths dea
+JOIN awesome-flash-321715.covid_data.covid_vaccinations vac
+  ON dea.location = vac.location
+  and dea.date = vac.date
+WHERE dea.continent is not null
+--ORDER BY 2,3
